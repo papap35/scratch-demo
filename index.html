@@ -1,0 +1,225 @@
+﻿<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=480px,target-densitydpi=device-dpi,user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="format-detection" content="telephone=no">
+    <title>刮刮卡</title>
+    <style type="text/css">
+    @charset "utf-8";
+    * {
+        -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+        -webkit-touch-callout: none;
+        outline: none;
+    }
+
+    html {
+        -webkit-text-size-adjust: none;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+    }
+
+    a {
+        text-decoration: none;
+    }
+
+    ul,
+    li {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    img {
+        border: 0;
+    }
+
+    #card {
+        position: relative;
+    }
+
+    #prize {
+        width: 240px;
+        height: 50px;
+        background-color: #fff;
+        top: 10px;
+        left: 10px;
+        position: absolute;
+        z-index: 5;
+        font-size: 24px;
+        text-align: center;
+        line-height: 50px;
+        display: none;
+    }
+
+    #scratch {
+        top: 10px;
+        left: 10px;
+        position: absolute;
+        z-index: 10;
+    }
+    </style>
+</head>
+
+<body>
+    <div id="card">
+        <div id="prize"></div>
+        <div id="scratch"></div>
+    </div>
+    <script src="jquery-3.2.1.min.js"></script>
+    <script src="sketch.min.js"></script>
+    <script type="text/javascript">
+    $(document).ready(function() {
+        var COLOURS = ['rgba(255,255,255,1)', '#A7EBCA', '#FFFFFF', '#D8EBA7', '#868E80'];
+        var radius = 0;
+        var startFlag = false;
+        var enableFlag = false;
+
+        function getPrize() {
+            var random = Math.round(Math.random() * 9);
+            console.log('random: ' + random);
+            if (random < 1) {
+                document.getElementById("prize").innerHTML = "Ipad-Mini";
+            } else if (random < 3) {
+                document.getElementById("prize").innerHTML = "Iphone5s";
+            } else if (random < 5) {
+                document.getElementById("prize").innerHTML = "Iphone5c";
+            } else {
+                document.getElementById("prize").innerHTML = "Iphone4S没有";
+            }
+            enableFlag = true;
+        }
+
+        function finish() {
+            enableFlag = false;
+            sketch.clear();
+            sketch.banned(); //now not allow to erase canvas more
+            console.log('刮開區域: '+data.percent+'%');
+        }
+
+        var sketch = Sketch.create({
+            fullscreen: false,
+            width: 240,
+            height: 50,
+            container: document.getElementById('scratch'),
+            autoclear: false,
+            percentSchedule: true, //set true will caculat the percentage each 200ms
+            eraseFinish: true, //lock canvas after erase finish
+
+            setup: function() {
+                this.globalCompositeOperation = "source-over";
+                this.rect(0, 0, this.width, this.height);
+                this.fillStyle = this.strokeStyle = "#777";
+                this.fill();
+                this.globalCompositeOperation = "destination-out";
+                document.getElementById('prize').style.display = "block";
+            },
+            resize: function() {
+                this.globalCompositeOperation = "source-over";
+                this.rect(0, 0, this.width, this.height);
+                this.fillStyle = this.strokeStyle = "#777";
+                this.fill();
+                this.eraseFinish = true;
+                this.globalCompositeOperation = "destination-out";
+            },
+
+            update: function() {
+                radius = 2 + abs(sin(this.millis * 0.003) * 20);
+            },
+
+            // Event handlers
+
+            keydown: function() {
+                // God key
+                if (this.keys.C) {
+                    this.clear();
+                    $('canvas').trigger('percentReady', { 'percent': 100 });
+                }
+            },
+
+            // Mouse & touch events are merged, so handling touch events by default
+            // and powering sketches using the touches array is recommended for easy
+            // scalability. If you only need to handle the mouse / desktop browsers,
+            // use the 0th touch element and you get wider device support for free.
+            touchstart: function() {
+                getPrize();
+                startFlag = true;
+            },
+
+            touchend: function() {
+                startFlag = false;
+            },
+
+            touchmove: function() {
+                if (!this.eraseFinish) {
+                    return;
+                }
+                if(startFlag === true) {
+                    for (var i = this.touches.length - 1, touch; i >= 0; i--) {
+
+                        touch = this.touches[i];
+
+                        this.lineCap = 'round';
+                        this.lineJoin = 'round';
+                        this.fillStyle = this.strokeStyle = COLOURS[i % COLOURS.length];
+                        this.lineWidth = radius;
+
+                        this.beginPath();
+                        this.moveTo(touch.ox, touch.oy);
+                        this.lineTo(touch.x, touch.y);
+                        this.stroke();
+                    }
+                    if (this.percentSchedule) {
+                        window.ctx = this;
+                        setTimeout(this.percentage, 200);
+                        this.percentSchedule = false;
+                    }
+                }
+            },
+            percentage: function() {
+                var hits = 0;
+                var imageData = ctx.getImageData(0, 0, ctx.width, ctx.height);
+
+                for (var i = 0, ii = imageData.data.length; i < ii; i = i + 4) {
+                    if (
+                        imageData.data[i] == 0 &&
+                        imageData.data[i + 1] == 0 &&
+                        imageData.data[i + 2] == 0 &&
+                        imageData.data[i + 3] == 0
+                    ) hits++;
+                }
+                var percent = hits / (imageData.data.length / 4) * 100;
+                ctx.percentSchedule = true;
+                $('canvas').trigger('percentReady', { 'percent': percent }); //trigger a event after calulate the percentage
+                return percent;
+            },
+            banned: function() {
+                this.eraseFinish = false;
+            }
+        });
+
+        $('body').on('percentReady', 'canvas', function(e, data) {
+            if (data.percent > 50) {
+                finish();
+            }
+        });
+    });
+
+/*
+var c=document.getElementById("myCanvas");
+var ctx=c.getContext("2d");
+var img=document.getElementById("lamp");
+var pat=ctx.createPattern(img,"repeat");
+ctx.rect(0,0,150,100);
+ctx.fillStyle=pat;
+ctx.fill();
+*/
+    </script>
+</body>
+
+</html>
